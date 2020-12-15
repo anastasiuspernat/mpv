@@ -658,6 +658,9 @@ static inline float pq_delinearize(float x)
     return x;
 }
 
+// Experimental #HDR on #macOS        
+// Note: In HDR mode will map to higher values
+
 // Tone map from a known peak brightness to the range [0,1]. If ref_peak
 // is 0, we will use peak detection instead
 static void pass_tone_map(struct gl_shader_cache *sc,
@@ -679,9 +682,17 @@ static void pass_tone_map(struct gl_shader_cache *sc,
     if (opts->compute_peak >= 0)
         hdr_update_peak(sc, opts);
 
-    // Always hard-clip the upper bound of the signal range to avoid functions
-    // exploding on inputs greater than 1.0
-    GLSLF("vec3 sig = min(color.rgb, sig_peak);\n");
+    // Experimental #HDR on #macOS        
+    if (opts->curve == TONE_MAPPING_HDR_PASSTHROUGH && opts->curve == TONE_MAPPING_HDR_SCALE)
+    {
+        // Disable any clipping on HDR content
+        GLSLF("vec3 sig = color.rgb;\n");
+    } else
+    {
+        // Always hard-clip the upper bound of the signal range to avoid functions
+        // exploding on inputs greater than 1.0
+        GLSLF("vec3 sig = min(color.rgb, sig_peak);\n");
+    }
 
     // This function always operates on an absolute scale, so ignore the
     // dst_peak normalization for it
@@ -699,11 +710,29 @@ static void pass_tone_map(struct gl_shader_cache *sc,
 
     GLSL(float sig_orig = sig[sig_idx];)
     GLSLF("float slope = min(%f, %f / sig_avg);\n", opts->max_boost, sdr_avg);
-    GLSL(sig *= slope;)
-    GLSL(sig_peak *= slope;)
+    // Experimental #HDR on #macOS        
+    // Enable clipping only if we didn't enable HDR on macOS
+    if (opts->curve != TONE_MAPPING_HDR_PASSTHROUGH && opts->curve != TONE_MAPPING_HDR_SCALE)
+    {
+        GLSL(sig *= slope;)
+        GLSL(sig_peak *= slope;)
+    }
 
     float param = opts->curve_param;
     switch (opts->curve) {
+    // Experimental #HDR on #macOS        
+    // Scale color based on peak level metadata - results in correct HDR content reproduction
+    case TONE_MAPPING_HDR_PASSTHROUGH:
+        GLSLF("sig = sig/sig_peak;\n");
+        break;
+
+    // Experimental #HDR on #macOS        
+    case TONE_MAPPING_HDR_SCALE:
+        // This results in ignoring HDR metadata peak level and making it always the brightest
+        // Which can result in cool HDR effects for non-HDR content, making dark scenes brighter using full HDR range
+        // GLSLF("sig = sig;\n");
+        break;
+
     case TONE_MAPPING_CLIP:
         GLSLF("sig = min(%f * sig, 1.0);\n", isnan(param) ? 1.0 : param);
         break;

@@ -28,6 +28,9 @@
     if (self) {
         [self setAutoresizingMask:NSViewWidthSizable|NSViewHeightSizable];
     }
+    // Experimental #HDR on #macOS        
+    // This must be enabled to be able to display HDR content
+    self.wantsExtendedDynamicRangeOpenGLSurface = true;
     return self;
 }
 

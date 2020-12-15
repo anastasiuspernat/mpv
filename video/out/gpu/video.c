@@ -384,6 +384,12 @@ const struct m_sub_options gl_video_conf = {
             {"hable",    TONE_MAPPING_HABLE},
             {"gamma",    TONE_MAPPING_GAMMA},
             {"linear",   TONE_MAPPING_LINEAR},
+            // Experimental #HDR on #macOS        
+            // Added two tone mapping modes
+            // HDR Passthrough - render HDR content based on peak level
+            {"hdrpass",  TONE_MAPPING_HDR_PASSTHROUGH},
+            // HDR Scale - render HDR content and ignore peak level, this way any content can become exended
+            {"hdrscale", TONE_MAPPING_HDR_SCALE},
             {"bt.2390",  TONE_MAPPING_BT_2390})},
         {"hdr-compute-peak", OPT_CHOICE(tone_map.compute_peak,
             {"auto", 0},
@@ -2994,11 +3000,23 @@ static void pass_draw_to_screen(struct gl_video *p, struct ra_fbo fbo)
     // Adjust the overall gamma before drawing to screen
     if (p->user_gamma != 1) {
         gl_sc_uniform_f(p->sc, "user_gamma", p->user_gamma);
-        GLSL(color.rgb = clamp(color.rgb, 0.0, 1.0);)
+        // Experimental #HDR on #macOS        
+        // We only clamp RGB values when HDR is not enabled
+        if (p->opts.tone_map.curve != TONE_MAPPING_HDR_PASSTHROUGH && p->opts.tone_map.curve != TONE_MAPPING_HDR_SCALE)
+        {
+            GLSL(color.rgb = clamp(color.rgb, 0.0, 1.0);)
+        }
         GLSL(color.rgb = pow(color.rgb, vec3(user_gamma));)
     }
 
     pass_colormanage(p, p->image_params.color, fbo.color_space, false);
+
+    // Experimental #HDR on #macOS        
+    if (p->opts.tone_map.curve == TONE_MAPPING_HDR_PASSTHROUGH || p->opts.tone_map.curve == TONE_MAPPING_HDR_SCALE)
+    {
+        // TODO: this value (3.0) must be taken from NSScreen.screen.maximumPotentialExtendedDynamicRangeColorComponentValue
+         GLSLF("color.rgb = color.rgb * %f\n;", 3.0);
+    }
 
     // Since finish_pass_fbo doesn't work with compute shaders, and neither
     // does the checkerboard/dither code, we may need an indirection via

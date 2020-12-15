@@ -95,6 +95,10 @@ enum tone_mapping {
     TONE_MAPPING_GAMMA,
     TONE_MAPPING_LINEAR,
     TONE_MAPPING_BT_2390,
+    // Experimental #HDR on #macOS        
+    TONE_MAPPING_HDR_PASSTHROUGH,
+    // Experimental #HDR on #macOS        
+    TONE_MAPPING_HDR_SCALE
 };
 
 struct gl_tone_map_opts {
