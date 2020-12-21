@@ -42,12 +42,15 @@ class Common: NSObject {
 
     var cursorVisibilityWanted: Bool = true
 
+    var colorSpace: NSColorSpace?
+
     var title: String = "mpv" {
         didSet { if let window = window { window.title = title } }
     }
 
     init(_ mpLog: OpaquePointer?) {
         log = LogHelper(mpLog)
+        colorSpace = nil
     }
 
     func initMisc(_ vo: UnsafeMutablePointer<vo>) {
@@ -138,6 +141,14 @@ class Common: NSObject {
         view.layer = layer
         view.wantsLayer = true
         view.layerContentsPlacement = .scaleProportionallyToFit
+
+        // Experimental #HDR on #macOS        
+        // This must be enabled to reproduce HDR content 
+        if (mpv?.macOpts.macos_hdr_csp != -1) {
+            (view.layer as! CAOpenGLLayer).wantsExtendedDynamicRangeContent = true
+            view.wantsExtendedDynamicRangeOpenGLSurface = true;
+        }
+
     }
 
     func initWindowState() {
@@ -395,7 +406,58 @@ class Common: NSObject {
     }
 
     func updateICCProfile() {
-        log.sendWarning("updateICCProfile not implemented")
+        guard let windowColorSpace = window?.screen?.colorSpace else {
+            log.sendWarning("Couldn't update ICC Profile, no color space available")
+            return 
+        }
+
+        colorSpace = windowColorSpace
+
+        if #available(macOS 10.11, *) {
+
+            // Experimental #HDR on #macOS        
+            var name = "" as CFString
+
+// HDR is supported fully only on macOS 10.15 and higher
+// some of the HDR color spaces are available on 10.14 though
+#if HAVE_MACOS_10_14_FEATURES
+                switch (mpv?.macOpts.macos_hdr_csp)
+                {
+                    case 0: if #available(macOS 10.14.6, *) {
+                                name = CGColorSpace.displayP3_HLG
+                            }   
+                            break;
+                    case 1: if #available(macOS 10.14.6, *) {
+                                name = CGColorSpace.displayP3_PQ_EOTF
+                            }   
+                            break;
+                    case 2: if #available(macOS 10.14.3, *) {
+                                name = CGColorSpace.extendedLinearDisplayP3
+                            }
+                            break;
+                    case 3: name = CGColorSpace.itur_2020
+                            break;
+                    case 4: if #available(macOS 10.15.6, *) {
+                                name = CGColorSpace.itur_2020_HLG 
+                            }
+                            break;
+                    case 5: if #available(macOS 10.14.6, *) {
+                                name = CGColorSpace.itur_2020_PQ_EOTF
+                            }
+                            break;
+                    default: 
+                            break;
+                }
+#endif            
+            // Experimental #HDR on #macOS        
+            if (name as String != "")
+            {
+                (view?.layer as! CAOpenGLLayer).colorspace = CGColorSpace(name: name)
+            } else
+            {
+                (view?.layer as! CAOpenGLLayer).colorspace = windowColorSpace.cgColorSpace
+            }
+        }
     }
 
     func getScreenBy(id screenID: Int) -> NSScreen? {
